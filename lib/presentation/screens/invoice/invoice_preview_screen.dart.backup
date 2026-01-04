@@ -1,0 +1,2783 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/widgets.dart' as pw;
+import '../../../core/constants/app_colors.dart';
+import '../../../data/models/invoice_model.dart';
+import '../../../data/models/client_model.dart';
+import '../../services/invoice_pdf_service.dart';
+import '../../providers/invoice_provider.dart';
+
+enum DocumentStyle {
+  minimalist,
+  modernCorporate,
+  elegantDark,
+  cleanBlue,
+  compact,
+  modernStriped,
+}
+
+class InvoicePreviewScreen extends ConsumerStatefulWidget {
+  final String invoiceNumber;
+  final Client? client;
+  final List<InvoiceItem> items;
+  final double subtotal;
+  final double tax;
+  final double total;
+
+  const InvoicePreviewScreen({
+    super.key,
+    required this.invoiceNumber,
+    this.client,
+    required this.items,
+    required this.subtotal,
+    required this.tax,
+    required this.total,
+  });
+
+  @override
+  ConsumerState<InvoicePreviewScreen> createState() =>
+      _InvoicePreviewScreenState();
+}
+
+class _InvoicePreviewScreenState extends ConsumerState<InvoicePreviewScreen> {
+  DocumentStyle _selectedStyle = DocumentStyle.minimalist;
+  bool _isSaved = false;
+
+  Future<void> _saveInvoice() async {
+    if (_isSaved) return;
+
+    final now = DateTime.now();
+    final newInvoice = Invoice(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      number: widget.invoiceNumber,
+      clientName: widget.client?.name ?? 'Unknown Client',
+      amount: widget.total,
+      date: now,
+      dueDate: now.add(const Duration(days: 30)),
+      status: InvoiceStatus.pending,
+      items: widget.items,
+    );
+
+    // Save to database
+    final invoiceService = ref.read(invoiceServiceProvider);
+    await invoiceService.createInvoice(newInvoice);
+
+    // Refresh invoice list
+    await ref.read(invoiceProvider.notifier).loadInvoices();
+
+    _isSaved = true;
+  }
+
+  Future<void> _printPdf() async {
+    // Save invoice first
+    await _saveInvoice();
+
+    final pdf = await _generatePdf();
+    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+  }
+
+  Future<void> _sharePdf() async {
+    // Save invoice first
+    await _saveInvoice();
+
+    final pdf = await _generatePdf();
+    final bytes = await pdf.save();
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: '${widget.invoiceNumber}.pdf',
+    );
+  }
+
+  Future<pw.Document> _generatePdf() async {
+    print('🎨 Generating PDF with style: $_selectedStyle');
+    switch (_selectedStyle) {
+      case DocumentStyle.minimalist:
+        print('✅ Using Minimalist template');
+        return InvoicePdfService.generateMinimalistPdf(
+          invoiceNumber: widget.invoiceNumber,
+          client: widget.client,
+          items: widget.items,
+          subtotal: widget.subtotal,
+          tax: widget.tax,
+          total: widget.total,
+        );
+      case DocumentStyle.modernCorporate:
+        print('✅ Using Modern Corporate template');
+        return InvoicePdfService.generateModernCorporatePdf(
+          invoiceNumber: widget.invoiceNumber,
+          client: widget.client,
+          items: widget.items,
+          subtotal: widget.subtotal,
+          tax: widget.tax,
+          total: widget.total,
+        );
+      case DocumentStyle.elegantDark:
+        print('✅ Using Elegant Dark template');
+        return InvoicePdfService.generateElegantDarkPdf(
+          invoiceNumber: widget.invoiceNumber,
+          client: widget.client,
+          items: widget.items,
+          subtotal: widget.subtotal,
+          tax: widget.tax,
+          total: widget.total,
+        );
+      case DocumentStyle.cleanBlue:
+        print('✅ Using Clean Blue template');
+        return InvoicePdfService.generateCleanBluePdf(
+          invoiceNumber: widget.invoiceNumber,
+          client: widget.client,
+          items: widget.items,
+          subtotal: widget.subtotal,
+          tax: widget.tax,
+          total: widget.total,
+        );
+      case DocumentStyle.compact:
+        print('✅ Using Compact template');
+        return InvoicePdfService.generateCompactPdf(
+          invoiceNumber: widget.invoiceNumber,
+          client: widget.client,
+          items: widget.items,
+          subtotal: widget.subtotal,
+          tax: widget.tax,
+          total: widget.total,
+        );
+      case DocumentStyle.modernStriped:
+        print('✅ Using Modern Striped template');
+        return InvoicePdfService.generateModernStripedPdf(
+          invoiceNumber: widget.invoiceNumber,
+          client: widget.client,
+          items: widget.items,
+          subtotal: widget.subtotal,
+          tax: widget.tax,
+          total: widget.total,
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? AppColors.backgroundDark
+        : AppColors.background;
+
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            _buildHeader(context, isDark),
+
+            // Main Content - Document Preview
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 200),
+                child: Center(child: _buildDocumentPreview(isDark)),
+              ),
+            ),
+
+            // Footer - Fixed Bottom
+            _buildFooter(context, isDark),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: backgroundColor(isDark).withOpacity(0.9),
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.black.withOpacity(0.05),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Back Button
+          InkWell(
+            onTap: () => Navigator.pop(context),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.arrow_back_ios_new,
+                size: 20,
+                color: isDark ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+          ),
+
+          // Title
+          Text(
+            'Preview',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : AppColors.textPrimary,
+            ),
+          ),
+
+          // Edit Button
+          InkWell(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              child: Text(
+                'Edit',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentPreview(bool isDark) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 380),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.4 : 0.1),
+            blurRadius: 40,
+            offset: const Offset(0, 20),
+            spreadRadius: -5,
+          ),
+        ],
+      ),
+      child: AspectRatio(
+        aspectRatio: 210 / 297, // A4 ratio
+        child: _buildDocumentContent(),
+      ),
+    );
+  }
+
+  Widget _buildDocumentContent() {
+    switch (_selectedStyle) {
+      case DocumentStyle.minimal:
+        return _buildMinimalDocument();
+      case DocumentStyle.bold:
+        return _buildBoldDocument();
+      case DocumentStyle.classic:
+        return _buildClassicDocument();
+      case DocumentStyle.modern:
+        return _buildCreativeDocument();
+      case DocumentStyle.elegant:
+        return _buildDarkDocument();
+      case DocumentStyle.corporate:
+        return _buildCorporateDocument();
+      case DocumentStyle.minimalist:
+        return _buildMinimalistDocument();
+      case DocumentStyle.modernCorporate:
+        return _buildModernCorporateDocument();
+      case DocumentStyle.elegantDark:
+        return _buildElegantDarkDocument();
+      case DocumentStyle.cleanBlue:
+        return _buildCleanBlueDocument();
+      case DocumentStyle.compact:
+        return _buildCompactDocument();
+      case DocumentStyle.modernStriped:
+        return _buildModernStripedDocument();
+    }
+  }
+
+  Widget _buildMinimalDocument() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.bolt,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'INVOICE',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  Text(
+                    widget.invoiceNumber,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: const [
+                  Text(
+                    'Acme Inc.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  Text(
+                    '123 Design Street',
+                    style: TextStyle(fontSize: 9, color: Color(0xFF64748B)),
+                  ),
+                  Text(
+                    'San Francisco, CA',
+                    style: TextStyle(fontSize: 9, color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 32),
+
+          // Billed To
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'BILLED TO',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF94A3B8),
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.client?.name ?? 'No Client Selected',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              if (widget.client != null) ...[
+                Text(
+                  widget.client!.email,
+                  style: const TextStyle(fontSize: 9, color: Color(0xFF64748B)),
+                ),
+                if (widget.client!.company.isNotEmpty)
+                  Text(
+                    widget.client!.company,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Items Table
+          Expanded(
+            child: Column(
+              children: [
+                // Table Header
+                Container(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
+                    ),
+                  ),
+                  child: Row(
+                    children: const [
+                      Expanded(
+                        child: Text(
+                          'Description',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 48,
+                        child: Text(
+                          'Qty',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 64,
+                        child: Text(
+                          'Amount',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Items
+                ...widget.items.map(
+                  (item) => Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFF8FAFC), width: 1),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 48,
+                          child: Text(
+                            '${item.quantity}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 64,
+                          child: Text(
+                            '\$${item.total.toStringAsFixed(2)}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const Spacer(),
+              ],
+            ),
+          ),
+
+          // Totals
+          Container(
+            padding: const EdgeInsets.only(top: 16),
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Color(0xFFE2E8F0), width: 2),
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Subtotal',
+                      style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                    ),
+                    Text(
+                      '\$${widget.subtotal.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Tax (10%)',
+                      style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                    ),
+                    Text(
+                      '\$${widget.tax.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Due',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    Text(
+                      '\$${widget.total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoldDocument() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Bold Header with dark background
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'INVOICE',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      widget.invoiceNumber,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Acme Inc.',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      '123 Design Street',
+                      style: TextStyle(fontSize: 8, color: Color(0xFF94A3B8)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Billed To with accent border
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppColors.primary, width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'BILLED TO',
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  widget.client?.name ?? 'No Client Selected',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                if (widget.client != null)
+                  Text(
+                    widget.client!.email,
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Items Table with header background
+          Expanded(
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 8,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(4),
+                    ),
+                  ),
+                  child: Row(
+                    children: const [
+                      Expanded(
+                        child: Text(
+                          'Description',
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 32,
+                        child: Text(
+                          'Qty',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 48,
+                        child: Text(
+                          'Amount',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                ...widget.items.map(
+                  (item) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 6,
+                      horizontal: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 32,
+                          child: Text(
+                            '${item.quantity}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 48,
+                          child: Text(
+                            '\$${item.total.toStringAsFixed(2)}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const Spacer(),
+              ],
+            ),
+          ),
+
+          // Totals
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Subtotal',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      '\$${widget.subtotal.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Tax (10%)',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      '\$${widget.tax.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  height: 2,
+                  color: AppColors.primary,
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'TOTAL DUE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    Text(
+                      '\$${widget.total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClassicDocument() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Classic centered header
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.primary, width: 2),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'AI',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Acme Inc.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const Text(
+                  '123 Design Street, San Francisco, CA',
+                  style: TextStyle(fontSize: 8, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: const Color(0xFF0F172A),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Text(
+                    'INVOICE',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: 2.0,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.invoiceNumber,
+                  style: const TextStyle(fontSize: 9, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Billed To
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Bill To:',
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.client?.name ?? 'No Client Selected',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                if (widget.client != null)
+                  Text(
+                    widget.client!.email,
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Items Table
+          Expanded(
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 8,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    border: Border(
+                      top: BorderSide(color: Color(0xFF0F172A), width: 1),
+                      bottom: BorderSide(color: Color(0xFF0F172A), width: 1),
+                      left: BorderSide(color: Color(0xFF0F172A), width: 1),
+                      right: BorderSide(color: Color(0xFF0F172A), width: 1),
+                    ),
+                  ),
+                  child: Row(
+                    children: const [
+                      Expanded(
+                        child: Text(
+                          'Description',
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          'Quantity',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 48,
+                        child: Text(
+                          'Amount',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                ...widget.items.map(
+                  (item) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 6,
+                      horizontal: 8,
+                    ),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFF0F172A)),
+                        left: BorderSide(color: Color(0xFF0F172A)),
+                        right: BorderSide(color: Color(0xFF0F172A)),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 40,
+                          child: Text(
+                            '${item.quantity}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 48,
+                          child: Text(
+                            '\$${item.total.toStringAsFixed(2)}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const Spacer(),
+              ],
+            ),
+          ),
+
+          // Totals
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Container(
+                width: 160,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFF0F172A), width: 2),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Subtotal:',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                        Text(
+                          '\$${widget.subtotal.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Tax (10%):',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                        Text(
+                          '\$${widget.tax.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      height: 2,
+                      color: const Color(0xFF0F172A),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Due:',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        Text(
+                          '\$${widget.total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreativeDocument() {
+    return Container(
+      color: Colors.white,
+      child: Row(
+        children: [
+          // Blue sidebar
+          Container(width: 30, color: const Color(0xFF0ea5e9)),
+          // Content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Invoice',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    widget.invoiceNumber,
+                    style: const TextStyle(fontSize: 8, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  ...widget.items.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '${item.name} - \$${item.total.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 8),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'TOTAL \$${widget.total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDarkDocument() {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'INVOICE',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            widget.invoiceNumber,
+            style: const TextStyle(fontSize: 8, color: Colors.grey),
+          ),
+          const SizedBox(height: 16),
+          ...widget.items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '${item.name} - \$${item.total}',
+                style: const TextStyle(fontSize: 8, color: Colors.white),
+              ),
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '\$${widget.total.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.green,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCorporateDocument() {
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          // Gray header
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: Colors.grey[300],
+            child: const Text(
+              'INVOICE',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Items table
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: [
+                // Header row
+                Row(
+                  children: const [
+                    Expanded(
+                      child: Text(
+                        'Item',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 30,
+                      child: Text(
+                        'Qty',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 40,
+                      child: Text(
+                        'Price',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(),
+                // Items
+                ...widget.items.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: const TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 30,
+                          child: Text(
+                            '${item.quantity}',
+                            style: const TextStyle(fontSize: 8),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 40,
+                          child: Text(
+                            item.total.toStringAsFixed(2),
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(fontSize: 8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'TOTAL: \$${widget.total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMinimalistDocument() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'INVOICE',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w300,
+              letterSpacing: 2,
+            ),
+          ),
+          const Divider(thickness: 0.5),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Bill To:',
+                    style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    widget.client?.name ?? 'N/A',
+                    style: const TextStyle(fontSize: 8),
+                  ),
+                ],
+              ),
+              Text(widget.invoiceNumber, style: const TextStyle(fontSize: 7)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            color: Colors.grey[100],
+            padding: const EdgeInsets.all(8),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Description',
+                  style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  'Amount',
+                  style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          ...widget.items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(item.name, style: const TextStyle(fontSize: 7)),
+                  Text(
+                    '\$${item.total.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 7),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'Total: \$${widget.total.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernCorporateDocument() {
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          Container(
+            color: const Color(0xFF1e293b),
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'INVOICE',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '#${widget.invoiceNumber}',
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Client Details',
+                  style: TextStyle(fontSize: 8, color: Colors.grey),
+                ),
+                Text(
+                  widget.client?.name ?? 'N/A',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  color: const Color(0xFF334155),
+                  padding: const EdgeInsets.all(6),
+                  child: const Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Item',
+                          style: TextStyle(
+                            fontSize: 7,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 30,
+                        child: Text(
+                          'Qty',
+                          style: TextStyle(
+                            fontSize: 7,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          'Total',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 7,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ...widget.items.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: const TextStyle(fontSize: 7),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 30,
+                          child: Text(
+                            '${item.quantity}',
+                            style: const TextStyle(fontSize: 7),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 40,
+                          child: Text(
+                            '\$${item.total.toStringAsFixed(2)}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(fontSize: 7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'Grand Total: \$${widget.total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildElegantDarkDocument() {
+    return Container(
+      color: Colors.white,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: const BoxDecoration(
+                color: Color(0xFFfacc15),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'PREMIUM SERVICES',
+                  style: TextStyle(
+                    fontSize: 6,
+                    letterSpacing: 2,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Invoice',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'CLIENT',
+                            style: TextStyle(
+                              fontSize: 6,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            widget.client?.name ?? 'N/A',
+                            style: const TextStyle(fontSize: 8),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text(
+                            'INVOICE NO',
+                            style: TextStyle(
+                              fontSize: 6,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            widget.invoiceNumber,
+                            style: const TextStyle(fontSize: 8),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                ...widget.items.map(
+                  (item) => Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey, width: 0.5),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(item.name, style: const TextStyle(fontSize: 8)),
+                        Text(
+                          '\$${item.total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'TOTAL DUE',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '\$${widget.total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF854d0e),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCleanBlueDocument() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'INV',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Invoice',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  Text(
+                    '#${widget.invoiceNumber}',
+                    style: const TextStyle(fontSize: 7),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'BILL TO',
+                      style: TextStyle(
+                        fontSize: 6,
+                        color: Colors.blue[700],
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      widget.client?.name ?? 'N/A',
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'AMOUNT DUE',
+                      style: TextStyle(
+                        fontSize: 6,
+                        color: Colors.blue[700],
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '\$${widget.total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.blue, width: 2)),
+            ),
+            padding: const EdgeInsets.only(bottom: 4),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Description',
+                  style: TextStyle(
+                    fontSize: 7,
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Total',
+                  style: TextStyle(
+                    fontSize: 7,
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ...widget.items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(item.name, style: const TextStyle(fontSize: 7)),
+                  Text(
+                    '\$${item.total.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 7),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactDocument() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'INVOICE ${widget.invoiceNumber}',
+                style: const TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                DateTime.now().toString().split(' ')[0],
+                style: const TextStyle(fontSize: 6),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'To: ${widget.client?.name ?? 'N/A'}',
+            style: const TextStyle(fontSize: 6),
+          ),
+          const Divider(thickness: 0.5),
+          ...widget.items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Text('${index + 1}.', style: const TextStyle(fontSize: 6)),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(item.name, style: const TextStyle(fontSize: 6)),
+                  ),
+                  Text(
+                    '\$${item.total.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 6),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const Spacer(),
+          const Divider(thickness: 0.5),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'TOTAL: \$${widget.total.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernStripedDocument() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'INVOICE',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF4f46e5),
+                    ),
+                  ),
+                  Text(
+                    'No: ${widget.invoiceNumber}',
+                    style: const TextStyle(fontSize: 7),
+                  ),
+                ],
+              ),
+              Container(
+                height: 30,
+                width: 30,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF4f46e5),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Text(
+                    'LOGO',
+                    style: TextStyle(color: Colors.white, fontSize: 5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            color: const Color(0xFF4f46e5),
+            padding: const EdgeInsets.all(6),
+            child: const Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Description',
+                    style: TextStyle(
+                      fontSize: 7,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 20,
+                  child: Text(
+                    'Qty',
+                    style: TextStyle(
+                      fontSize: 7,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    'Total',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 7,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ...widget.items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+            return Container(
+              color: index % 2 == 1 ? Colors.grey[100] : Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(item.name, style: const TextStyle(fontSize: 7)),
+                  ),
+                  SizedBox(
+                    width: 20,
+                    child: Text(
+                      '${item.quantity}',
+                      style: const TextStyle(fontSize: 7),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 30,
+                    child: Text(
+                      '\$${item.total.toStringAsFixed(2)}',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 7),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const Spacer(),
+          Row(
+            children: [
+              const Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Notes:',
+                      style: TextStyle(
+                        fontSize: 7,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Thank you!',
+                      style: TextStyle(
+                        fontSize: 6,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 1,
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total',
+                          style: TextStyle(
+                            fontSize: 7,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '\$${widget.total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 7,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter(BuildContext context, bool isDark) {
+    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      decoration: BoxDecoration(
+        color: surfaceColor.withOpacity(0.95),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100]!,
+          ),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Style Selector
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Document Style',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                'View all',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Style Options
+          SizedBox(
+            height: 90,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _buildStyleOption(
+                  DocumentStyle.minimalist,
+                  'Minimalist',
+                  Icons.space_bar,
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _buildStyleOption(
+                  DocumentStyle.modernCorporate,
+                  'Modern Corp',
+                  Icons.corporate_fare,
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _buildStyleOption(
+                  DocumentStyle.elegantDark,
+                  'Elegant Dark',
+                  Icons.diamond,
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _buildStyleOption(
+                  DocumentStyle.cleanBlue,
+                  'Clean Blue',
+                  Icons.water_drop,
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _buildStyleOption(
+                  DocumentStyle.compact,
+                  'Compact',
+                  Icons.compress,
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _buildStyleOption(
+                  DocumentStyle.modernStriped,
+                  'Modern Striped',
+                  Icons.view_headline,
+                  isDark,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentContent() {
+    switch (_selectedStyle) {
+      case DocumentStyle.minimalist:
+        return _buildMinimalistDocument();
+      case DocumentStyle.modernCorporate:
+        return _buildModernCorporateDocument();
+      case DocumentStyle.elegantDark:
+        return _buildElegantDarkDocument();
+      case DocumentStyle.cleanBlue:
+        return _buildCleanBlueDocument();
+      case DocumentStyle.compact:
+        return _buildCompactDocument();
+      case DocumentStyle.modernStriped:
+        return _buildModernStripedDocument();
+    }
+  }
+
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _buildStyleOption(
+                  DocumentStyle.compact,
+                  'Compact',
+                  Icons.compress,
+                  isDark,
+                ),
+                const SizedBox(width: 12),
+                _buildStyleOption(
+                  DocumentStyle.modernStriped,
+                  'Modern Striped',
+                  Icons.view_headline,
+                  isDark,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _sharePdf,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: BorderSide(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.grey[200]!,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.share, size: 20),
+                  label: const Text(
+                    'Share',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: _printPdf,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 8,
+                    shadowColor: AppColors.primary.withOpacity(0.3),
+                  ),
+                  icon: const Icon(Icons.print, size: 20),
+                  label: const Text(
+                    'Print PDF',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStyleOption(
+    DocumentStyle style,
+    String label,
+    IconData icon,
+    bool isDark,
+  ) {
+    final isSelected = _selectedStyle == style;
+
+    return GestureDetector(
+      onTap: () {
+        print('👆 User selected template: $style');
+        setState(() {
+          _selectedStyle = style;
+        });
+        print('✅ Template changed to: $_selectedStyle');
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 100,
+            height: 60,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? AppColors.primary.withOpacity(0.1)
+                  : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.grey[200]!),
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Stack(
+              children: [
+                // Style-specific thumbnail preview
+                _buildStyleThumbnail(style, isDark),
+                if (isSelected)
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: isSelected
+                  ? AppColors.primary
+                  : (isDark
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color backgroundColor(bool isDark) {
+    return isDark ? AppColors.backgroundDark : AppColors.background;
+  }
+
+  Widget _buildStyleThumbnail(DocumentStyle style, bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black;
+
+    switch (style) {
+      case DocumentStyle.minimal:
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 25,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: textColor,
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                width: double.infinity,
+                height: 0.5,
+                color: Colors.grey[300],
+              ),
+              const Spacer(),
+              Container(
+                width: 40,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+            ],
+          ),
+        );
+
+      case DocumentStyle.bold:
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                height: 8,
+                color: Colors.grey[800],
+                child: Center(
+                  child: Container(width: 30, height: 2, color: Colors.white),
+                ),
+              ),
+              const Spacer(),
+              Container(width: 35, height: 2, color: Colors.grey[600]),
+            ],
+          ),
+        );
+
+      case DocumentStyle.classic:
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            children: [
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[400]!, width: 1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const Spacer(),
+              Container(width: 40, height: 2, color: Colors.grey[400]),
+            ],
+          ),
+        );
+
+      case DocumentStyle.modern:
+        return Row(
+          children: [
+            Container(width: 8, color: const Color(0xFF0ea5e9)),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(width: 25, height: 2, color: textColor),
+                    const Spacer(),
+                    Container(width: 30, height: 2, color: Colors.grey[400]),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+
+      case DocumentStyle.elegant:
+        return Container(
+          color: Colors.black,
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(width: 30, height: 2, color: Colors.white),
+              const Spacer(),
+              Container(width: 25, height: 3, color: Colors.green),
+            ],
+          ),
+        );
+
+      case DocumentStyle.corporate:
+        return Column(
+          children: [
+            Container(
+              width: double.infinity,
+              height: 10,
+              color: Colors.grey[300],
+              child: Center(
+                child: Container(width: 30, height: 2, color: Colors.grey[700]),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: 1,
+                      color: Colors.grey[300],
+                    ),
+                    const SizedBox(height: 2),
+                    Container(
+                      width: double.infinity,
+                      height: 1,
+                      color: Colors.grey[200],
+                    ),
+                    const Spacer(),
+                    Container(width: 35, height: 2, color: Colors.grey[600]),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+
+      case DocumentStyle.minimalist:
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 30,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: textColor.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                width: double.infinity,
+                height: 0.5,
+                color: Colors.grey[300],
+              ),
+              const SizedBox(height: 3),
+              Container(
+                width: double.infinity,
+                height: 6,
+                color: Colors.grey[100],
+              ),
+              const Spacer(),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Container(width: 25, height: 2, color: Colors.grey[700]),
+              ),
+            ],
+          ),
+        );
+
+      case DocumentStyle.modernCorporate:
+        return Column(
+          children: [
+            Container(
+              width: double.infinity,
+              height: 12,
+              color: const Color(0xFF1e293b),
+              child: Center(
+                child: Container(width: 30, height: 2, color: Colors.white),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: 4,
+                      color: const Color(0xFF334155),
+                    ),
+                    const SizedBox(height: 2),
+                    Container(
+                      width: double.infinity,
+                      height: 1,
+                      color: Colors.grey[200],
+                    ),
+                    const Spacer(),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        width: 30,
+                        height: 2,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+
+      case DocumentStyle.elegantDark:
+        return Stack(
+          children: [
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Container(
+                width: 25,
+                height: 25,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFfacc15),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(width: 30, height: 2, color: Colors.grey[400]),
+                  const Spacer(),
+                  Container(
+                    width: 25,
+                    height: 3,
+                    color: const Color(0xFF854d0e),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+
+      case DocumentStyle.cleanBlue:
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  Container(width: 20, height: 2, color: Colors.blue),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Container(
+                width: double.infinity,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Spacer(),
+              Container(width: double.infinity, height: 1, color: Colors.blue),
+            ],
+          ),
+        );
+
+      case DocumentStyle.compact:
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(width: 35, height: 2, color: Colors.grey[700]),
+              const SizedBox(height: 2),
+              Container(
+                width: double.infinity,
+                height: 0.5,
+                color: Colors.grey[300],
+              ),
+              const SizedBox(height: 2),
+              ...List.generate(
+                3,
+                (i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 1),
+                  child: Container(
+                    width: double.infinity,
+                    height: 1,
+                    color: Colors.grey[200],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Container(width: 25, height: 2, color: Colors.grey[700]),
+              ),
+            ],
+          ),
+        );
+
+      case DocumentStyle.modernStriped:
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 30,
+                    height: 2,
+                    color: const Color(0xFF4f46e5),
+                  ),
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF4f46e5),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Container(
+                width: double.infinity,
+                height: 4,
+                color: const Color(0xFF4f46e5),
+              ),
+              const SizedBox(height: 1),
+              Container(
+                width: double.infinity,
+                height: 2,
+                color: Colors.grey[100],
+              ),
+              const SizedBox(height: 1),
+              Container(width: double.infinity, height: 2, color: Colors.white),
+              const Spacer(),
+              Container(width: 25, height: 2, color: Colors.grey[700]),
+            ],
+          ),
+        );
+    }
+  }
+}
