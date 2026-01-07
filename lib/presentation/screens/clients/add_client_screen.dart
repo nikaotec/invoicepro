@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:math' as math;
 import '../../../core/constants/app_colors.dart';
-import '../../../data/models/client_model.dart';
-import 'client_list_screen.dart'; // For accessing clientServiceProvider
+import '../../../domain/entities/client.dart' as domain;
+import '../../providers/client_repository_provider.dart';
 
 class AddClientScreen extends ConsumerStatefulWidget {
   const AddClientScreen({super.key});
@@ -47,45 +46,61 @@ class _AddClientScreenState extends ConsumerState<AddClientScreen> {
     super.dispose();
   }
 
-  void _saveClient() {
+  Future<void> _saveClient() async {
     if (_formKey.currentState?.validate() ?? false) {
-      final service = ref.read(clientServiceProvider);
+      final repository = ref.read(clientRepositoryProvider);
 
-      // Generate initials
-      String initials = 'NC';
-      if (_nameController.text.isNotEmpty) {
-        final parts = _nameController.text.trim().split(' ');
-        if (parts.length > 1) {
-          initials = '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-        } else {
-          initials = parts.first
-              .substring(0, math.min(2, parts.first.length))
-              .toUpperCase();
-        }
+      final now = DateTime.now();
+      
+      // Build address
+      final addressParts = <String>[];
+      if (_streetController.text.isNotEmpty) {
+        addressParts.add(_streetController.text);
       }
+      if (_cityController.text.isNotEmpty) {
+        addressParts.add(_cityController.text);
+      }
+      if (_selectedUF.isNotEmpty) {
+        addressParts.add(_selectedUF);
+      }
+      final address = addressParts.isNotEmpty ? addressParts.join(', ') : null;
 
-      final newClient = Client.mock(
+      // Create domain client
+      final domainClient = domain.Client(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: _nameController.text,
-        company:
-            'N/A', // or add company field if needed, HTML doesn't explicitly show it but "Search name, email, or company" implies it. For now N/A or derive.
-        status: ClientStatus.active, // Default to active
-        totalBilled: 0.0,
-        lastActivity: 'Just added',
-        initials: initials,
-        gradient: [Colors.blue[100]!, Colors.indigo[100]!],
+        email: _emailController.text,
+        phone: _phoneController.text.isNotEmpty ? _phoneController.text : null,
+        address: address,
+        city: _cityController.text.isNotEmpty ? _cityController.text : null,
+        state: _selectedUF.isNotEmpty ? _selectedUF : null,
+        createdAt: now,
+        updatedAt: now,
       );
 
-      service.addClient(newClient);
+      final result = await repository.createClient(domainClient);
 
-      Navigator.pop(context); // Return to list
+      if (result.error != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${result.error!.message}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
 
+      if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Client added successfully'),
-          backgroundColor: AppColors.success,
+            backgroundColor: Colors.green,
         ),
       );
+        Navigator.of(context).pop();
+      }
     }
   }
 

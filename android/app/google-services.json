@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "346011079122",
+    "project_id": "invoicepro-c063a",
+    "storage_bucket": "invoicepro-c063a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:346011079122:android:441700639f3d2746a7380b",
+        "android_client_info": {
+          "package_name": "avs.com.invoicepro"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "346011079122-en2441g897llgmscttterkjuq0ntncbv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "avs.com.invoicepro",
+            "certificate_hash": "9850383f1f2bbcf8c2b74c999d540e4a9a7dbcee"
+          }
+        },
+        {
+          "client_id": "346011079122-aqu1b28nmtf2u4a1jalulaslk8g4ughq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTF8ZUZg4Oa1ST153HPeHMZOaXbBqdlE8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "346011079122-aqu1b28nmtf2u4a1jalulaslk8g4ughq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -6,6 +6,8 @@ class BusinessProfile {
   final String phone;
   final String address;
   final Uint8List? logoBytes;
+  final String currency;
+  final double taxRate;
 
   const BusinessProfile({
     this.name = 'Acme Corp',
@@ -13,6 +15,8 @@ class BusinessProfile {
     this.phone = '+1 (555) 123-4567',
     this.address = '123 Business Rd, Tech City, CA 94000',
     this.logoBytes,
+    this.currency = 'USD',
+    this.taxRate = 0.0,
   });
 
   BusinessProfile copyWith({
@@ -21,6 +25,8 @@ class BusinessProfile {
     String? phone,
     String? address,
     Uint8List? logoBytes,
+    String? currency,
+    double? taxRate,
   }) {
     return BusinessProfile(
       name: name ?? this.name,
@@ -28,6 +34,8 @@ class BusinessProfile {
       phone: phone ?? this.phone,
       address: address ?? this.address,
       logoBytes: logoBytes ?? this.logoBytes,
+      currency: currency ?? this.currency,
+      taxRate: taxRate ?? this.taxRate,
     );
   }
 }

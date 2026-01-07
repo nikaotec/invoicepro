@@ -11,6 +11,8 @@ class BusinessProfileNotifier extends StateNotifier<BusinessProfile> {
     String? address,
     dynamic
     logoBytes, // Using dynamic to avoid import issues, but should be Uint8List?
+    String? currency,
+    double? taxRate,
   }) {
     state = state.copyWith(
       name: name,
@@ -18,6 +20,8 @@ class BusinessProfileNotifier extends StateNotifier<BusinessProfile> {
       phone: phone,
       address: address,
       logoBytes: logoBytes,
+      currency: currency,
+      taxRate: taxRate,
     );
   }
 }

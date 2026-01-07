@@ -1,22 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'core/theme/app_theme.dart';
 import 'core/providers/theme_provider.dart';
-import 'presentation/screens/dashboard/dashboard_screen.dart';
+import 'presentation/screens/auth/login_screen.dart';
+import 'presentation/providers/auth_provider.dart';
+import 'presentation/providers/onboarding_provider.dart';
+import 'presentation/screens/onboarding/onboarding_screen.dart';
+import 'presentation/screens/dashboard/cash_flow_dashboard_screen.dart';
 import 'presentation/screens/dashboard/dashboard_empty_screen.dart';
 import 'presentation/screens/invoice/invoice_list_screen.dart';
-import 'presentation/screens/invoice/smart_invoice_creator_screen.dart';
+import 'presentation/screens/invoice/new_invoice_screen.dart';
 import 'presentation/screens/clients/clients_list_screen.dart';
-
-import 'presentation/screens/settings/business_settings_screen.dart';
+import 'presentation/screens/settings/settings_screen.dart';
 import 'presentation/providers/invoice_provider.dart';
 import 'core/utils/responsive_layout.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // TODO: Initialize Firebase
-  // await Firebase.initializeApp();
+  // Initialize Firebase - Required for app to work
+  try {
+    await Firebase.initializeApp();
+    debugPrint('Firebase initialized successfully');
+  } catch (e) {
+    debugPrint('Firebase initialization error: $e');
+    debugPrint(
+      'Please check your google-services.json file and build.gradle configuration',
+    );
+    // Continue anyway - error will be shown in auth provider
+  }
 
   runApp(const ProviderScope(child: InvoicelyProApp()));
 }
@@ -27,6 +40,31 @@ class InvoicelyProApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
+    final authState = ref.watch(authProvider);
+    final onboardingCompletedAsync = ref.watch(onboardingCompletedProvider);
+    final onboardingNotifier = ref.watch(onboardingNotifierProvider);
+
+    // Determine which screen to show
+    Widget homeScreen;
+    if (!authState.isAuthenticated) {
+      homeScreen = const LoginScreen();
+    } else {
+      // Check onboarding status - use notifier state if available, otherwise check async
+      final isCompleted =
+          onboardingNotifier ||
+          onboardingCompletedAsync.maybeWhen(
+            data: (v) => v,
+            orElse: () => false,
+          );
+
+      if (!isCompleted) {
+        // First time user - show onboarding
+        homeScreen = const OnboardingScreen();
+      } else {
+        // Authenticated and onboarding completed - show main app
+        homeScreen = const CashFlowDashboardScreen();
+      }
+    }
 
     return MaterialApp(
       title: 'Invoicely Pro',
@@ -34,8 +72,18 @@ class InvoicelyProApp extends ConsumerWidget {
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
       debugShowCheckedModeBanner: false,
-      home: const HomeScreen(),
+      home: homeScreen,
     );
+  }
+}
+
+/// Wrapper that shows the main app when authenticated
+class AuthWrapper extends ConsumerWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return const HomeScreen();
   }
 }
 
@@ -154,8 +202,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) =>
-                                const SmartInvoiceCreatorScreen(),
+                            builder: (context) => const NewInvoiceScreen(),
                           ),
                         );
                       },
@@ -180,17 +227,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       case 0:
         return hasNoInvoices
             ? const DashboardEmptyScreen()
-            : const DashboardScreen();
+            : const CashFlowDashboardScreen();
       case 1:
         return const InvoiceListScreen();
       case 2:
         return const ClientsListScreen();
       case 3:
-        return const BusinessSettingsScreen();
+        return const SettingsScreen();
       default:
         return hasNoInvoices
             ? const DashboardEmptyScreen()
-            : const DashboardScreen();
+            : const CashFlowDashboardScreen();
     }
   }
 }

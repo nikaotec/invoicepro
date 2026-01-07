@@ -38,7 +38,7 @@ class InvoiceNotifier extends StateNotifier<InvoiceState> {
   final ClientRepositoryImpl _clientRepository;
 
   InvoiceNotifier(this._repository, this._clientRepository)
-      : super(const InvoiceState()) {
+    : super(const InvoiceState()) {
     loadInvoices();
   }
 
@@ -47,10 +47,7 @@ class InvoiceNotifier extends StateNotifier<InvoiceState> {
     final result = await _repository.getRecentInvoices(limit: 10);
 
     if (result.error != null) {
-      state = state.copyWith(
-        error: result.error!.message,
-        isLoading: false,
-      );
+      state = state.copyWith(error: result.error!.message, isLoading: false);
       return;
     }
 
@@ -71,7 +68,7 @@ class InvoiceNotifier extends StateNotifier<InvoiceState> {
 
   Future<void> createRandomInvoice() async {
     state = state.copyWith(isLoading: true);
-    
+
     // Get a client to use
     final clientsResult = await _clientRepository.getClients();
     final clientId = clientsResult.data?.isNotEmpty == true
@@ -108,12 +105,9 @@ class InvoiceNotifier extends StateNotifier<InvoiceState> {
     );
 
     final result = await _repository.createInvoice(domainInvoice);
-    
+
     if (result.error != null) {
-      state = state.copyWith(
-        error: result.error!.message,
-        isLoading: false,
-      );
+      state = state.copyWith(error: result.error!.message, isLoading: false);
       return;
     }
 
@@ -195,18 +189,45 @@ final invoiceProvider = StateNotifierProvider<InvoiceNotifier, InvoiceState>((
 final dashboardStatsProvider = FutureProvider<Map<String, dynamic>>((
   ref,
 ) async {
-  final repository = ref.watch(invoiceRepositoryProvider);
-  final result = await repository.getDashboardStats();
-  
-  if (result.error != null) {
-    throw Exception(result.error!.message);
+  // Wait for invoices to load
+  await ref.read(invoiceProvider.notifier).loadInvoices();
+  final invoices = ref.read(invoiceProvider).invoices;
+
+  // Calculate stats from invoices
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+
+  double totalRevenue = 0.0;
+  double dueToday = 0.0;
+  double overdue = 0.0;
+  double received = 0.0;
+
+  for (final invoice in invoices) {
+    final dueDate = DateTime(
+      invoice.dueDate.year,
+      invoice.dueDate.month,
+      invoice.dueDate.day,
+    );
+
+    totalRevenue += invoice.amount;
+
+    if (invoice.status == ui_model.InvoiceStatus.paid) {
+      received += invoice.amount;
+    } else if (invoice.status == ui_model.InvoiceStatus.overdue) {
+      overdue += invoice.amount;
+    } else if (invoice.status == ui_model.InvoiceStatus.pending) {
+      if (dueDate.isAtSameMomentAs(today)) {
+        dueToday += invoice.amount;
+      } else if (dueDate.isBefore(today)) {
+        overdue += invoice.amount;
+      }
+    }
   }
-  
-  return result.data ?? {
-    'totalRevenue': 0.00,
-    'pendingAmount': 0.00,
-    'overdueAmount': 0.00,
-    'invoicesCount': 0,
-    'clientsCount': 0,
+
+  return {
+    'totalRevenue': totalRevenue,
+    'dueToday': dueToday,
+    'overdue': overdue,
+    'received': received,
   };
 });
